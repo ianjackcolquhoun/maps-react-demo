@@ -221,11 +221,6 @@ export default function HomeScreen() {
     if (routeData) {
       setRoute(routeData)
       setRideStatus("enroute")
-
-      Alert.alert(
-        "Ride Requested",
-        `${result.cart.name} is on the way!\n\nDistance: ${routeData.distance}\nEstimated Time: ${routeData.duration}`
-      )
     } else {
       // Reset to idle if route fetch failed
       setRideStatus("idle")
@@ -234,25 +229,9 @@ export default function HomeScreen() {
   }
 
   const handleCancelRequest = () => {
-    Alert.alert(
-      "Cancel Ride",
-      "Are you sure you want to cancel this ride request?",
-      [
-        {
-          text: "No",
-          style: "cancel",
-        },
-        {
-          text: "Yes, Cancel",
-          style: "destructive",
-          onPress: () => {
-            setRoute(null)
-            setRideStatus("idle")
-            setSelectedCart(null)
-          },
-        },
-      ]
-    )
+    setRoute(null)
+    setRideStatus("idle")
+    setSelectedCart(null)
   }
 
   // Button content based on ride status
