@@ -9,6 +9,30 @@ import { useEffect, useState } from "react"
 import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native"
 import { Polygon } from "react-native-maps"
 
+// Haversine formula to calculate distance between two coordinates in meters
+function calculateDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000 // Earth's radius in meters
+  const lat1Rad = (lat1 * Math.PI) / 180
+  const lat2Rad = (lat2 * Math.PI) / 180
+  const latDiff = ((lat2 - lat1) * Math.PI) / 180
+  const lonDiff = ((lon2 - lon1) * Math.PI) / 180
+
+  const a =
+    Math.sin(latDiff / 2) * Math.sin(latDiff / 2) +
+    Math.cos(lat1Rad) *
+      Math.cos(lat2Rad) *
+      Math.sin(lonDiff / 2) *
+      Math.sin(lonDiff / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+  return R * c // Distance in meters
+}
+
 export default function HomeScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null)
 
@@ -36,9 +60,52 @@ export default function HomeScreen() {
     })()
   }, [])
 
+  const findNearestCart = () => {
+    if (!location) {
+      Alert.alert("Location Required", "Waiting for your location...")
+      return null
+    }
+
+    const userLat = location.coords.latitude
+    const userLon = location.coords.longitude
+
+    let nearestCart = null
+    let minDistance = Infinity
+
+    CARTS.forEach((cart) => {
+      const distance = calculateDistance(
+        userLat,
+        userLon,
+        cart.latitude,
+        cart.longitude
+      )
+
+      if (distance < minDistance) {
+        minDistance = distance
+        nearestCart = cart
+      }
+    })
+
+    return { cart: nearestCart, distance: minDistance }
+  }
+
   const handleRequestPickup = () => {
-    // TODO: Implement ride request logic
-    console.log("Request pickup button pressed")
+    const result = findNearestCart()
+
+    if (result) {
+      const distanceInMiles = (result.distance * 0.000621371).toFixed(2)
+      console.log(`Nearest cart: ${result.cart?.name}`)
+      console.log(
+        `Distance: ${distanceInMiles} miles (${result.distance.toFixed(
+          0
+        )} meters)`
+      )
+
+      Alert.alert(
+        "Nearest Cart Found",
+        `${result.cart?.name}\nDistance: ${distanceInMiles} miles`
+      )
+    }
   }
 
   return (
