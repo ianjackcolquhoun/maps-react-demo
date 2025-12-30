@@ -6,7 +6,7 @@ import { CARTS, SERVICE_AREA_COORDINATES, STADIUM } from "@/constants/carts"
 import MaterialIcons from "@expo/vector-icons/MaterialIcons"
 import * as Location from "expo-location"
 import { useEffect, useState } from "react"
-import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native"
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { Polygon, Polyline } from "react-native-maps"
 
 // Decode Google's encoded polyline format
@@ -89,6 +89,7 @@ export default function HomeScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null)
   const [route, setRoute] = useState<RouteData | null>(null)
   const [rideStatus, setRideStatus] = useState<RideStatus>("idle")
+  const [selectedCart, setSelectedCart] = useState<Cart | null>(null)
 
   // Initial region - Downtown Cincinnati
   const initialRegion = {
@@ -197,8 +198,9 @@ export default function HomeScreen() {
       return
     }
 
-    // Set status to requesting
+    // Set status to requesting and store selected cart
     setRideStatus("requesting")
+    setSelectedCart(result.cart)
 
     const distanceInMiles = (result.distance * 0.000621371).toFixed(2)
     console.log(`Nearest cart: ${result.cart.name}`)
@@ -227,6 +229,7 @@ export default function HomeScreen() {
     } else {
       // Reset to idle if route fetch failed
       setRideStatus("idle")
+      setSelectedCart(null)
     }
   }
 
@@ -245,6 +248,7 @@ export default function HomeScreen() {
           onPress: () => {
             setRoute(null)
             setRideStatus("idle")
+            setSelectedCart(null)
           },
         },
       ]
@@ -287,6 +291,32 @@ export default function HomeScreen() {
 
   const buttonContent = getButtonContent()
 
+  // Ride info card content based on status
+  const getRideInfoContent = () => {
+    if (!selectedCart || !route) return null
+
+    switch (rideStatus) {
+      case "requesting":
+        return {
+          status: "Finding best route...",
+          cart: selectedCart.name,
+          showETA: false,
+        }
+      case "enroute":
+        return {
+          status: "Cart is on the way",
+          cart: selectedCart.name,
+          eta: route.duration,
+          distance: route.distance,
+          showETA: true,
+        }
+      default:
+        return null
+    }
+  }
+
+  const rideInfo = getRideInfoContent()
+
   return (
     <ThemedView style={styles.container}>
       <ThemedMapView style={styles.map} initialRegion={initialRegion}>
@@ -312,6 +342,28 @@ export default function HomeScreen() {
           />
         )}
       </ThemedMapView>
+
+      {rideInfo && (
+        <View style={styles.rideInfoCard}>
+          <View style={styles.rideInfoHeader}>
+            <MaterialIcons name="directions-car" size={20} color="#7c3aed" />
+            <Text style={styles.rideInfoStatus}>{rideInfo.status}</Text>
+          </View>
+          <Text style={styles.rideInfoCart}>{rideInfo.cart}</Text>
+          {rideInfo.showETA && (
+            <View style={styles.rideInfoDetails}>
+              <View style={styles.rideInfoDetailItem}>
+                <MaterialIcons name="access-time" size={16} color="#6b7280" />
+                <Text style={styles.rideInfoDetailText}>ETA: {rideInfo.eta}</Text>
+              </View>
+              <View style={styles.rideInfoDetailItem}>
+                <MaterialIcons name="straighten" size={16} color="#6b7280" />
+                <Text style={styles.rideInfoDetailText}>{rideInfo.distance}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
 
       <TouchableOpacity
         style={[
@@ -362,5 +414,48 @@ const styles = StyleSheet.create({
   requestButtonDisabled: {
     backgroundColor: "#9ca3af",
     opacity: 0.7,
+  },
+  rideInfoCard: {
+    position: "absolute",
+    top: 60,
+    left: 20,
+    right: 20,
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  rideInfoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  rideInfoStatus: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1f2937",
+  },
+  rideInfoCart: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginBottom: 12,
+  },
+  rideInfoDetails: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  rideInfoDetailItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  rideInfoDetailText: {
+    fontSize: 13,
+    color: "#6b7280",
   },
 })
