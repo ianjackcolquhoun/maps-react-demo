@@ -33,8 +33,15 @@ function calculateDistance(
   return R * c // Distance in meters
 }
 
+interface RouteData {
+  distance: string
+  duration: string
+  polyline: string
+}
+
 export default function HomeScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null)
+  const [route, setRoute] = useState<RouteData | null>(null)
 
   // Initial region - Downtown Cincinnati
   const initialRegion = {
@@ -89,21 +96,80 @@ export default function HomeScreen() {
     return { cart: nearestCart, distance: minDistance }
   }
 
-  const handleRequestPickup = () => {
+  const fetchRoute = async (
+    cartLat: number,
+    cartLng: number,
+    userLat: number,
+    userLng: number,
+    stadiumLat: number,
+    stadiumLng: number
+  ): Promise<RouteData | null> => {
+    const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
+
+    if (!apiKey) {
+      Alert.alert("Error", "Google Maps API key not found")
+      return null
+    }
+
+    const origin = `${cartLat},${cartLng}`
+    const destination = `${stadiumLat},${stadiumLng}`
+    const waypoint = `${userLat},${userLng}`
+
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&waypoints=${waypoint}&key=${apiKey}`
+
+    try {
+      const response = await fetch(url)
+      const data = await response.json()
+
+      if (data.status !== "OK") {
+        Alert.alert("Route Error", `Failed to fetch route: ${data.status}`)
+        return null
+      }
+
+      const route = data.routes[0]
+      const leg = route.legs[0]
+
+      return {
+        distance: leg.distance.text,
+        duration: leg.duration.text,
+        polyline: route.overview_polyline.points,
+      }
+    } catch (error) {
+      Alert.alert("Network Error", "Failed to fetch route from Google Maps")
+      console.error("Directions API error:", error)
+      return null
+    }
+  }
+
+  const handleRequestPickup = async () => {
     const result = findNearestCart()
 
-    if (result) {
-      const distanceInMiles = (result.distance * 0.000621371).toFixed(2)
-      console.log(`Nearest cart: ${result.cart?.name}`)
-      console.log(
-        `Distance: ${distanceInMiles} miles (${result.distance.toFixed(
-          0
-        )} meters)`
-      )
+    if (!result || !result.cart || !location) {
+      return
+    }
+
+    const distanceInMiles = (result.distance * 0.000621371).toFixed(2)
+    console.log(`Nearest cart: ${result.cart.name}`)
+    console.log(
+      `Distance: ${distanceInMiles} miles (${result.distance.toFixed(0)} meters)`
+    )
+
+    // Fetch the route from cart → user → stadium
+    const routeData = await fetchRoute(
+      result.cart.latitude,
+      result.cart.longitude,
+      location.coords.latitude,
+      location.coords.longitude,
+      STADIUM.latitude,
+      STADIUM.longitude
+    )
+
+    if (routeData) {
+      setRoute(routeData)
 
       Alert.alert(
-        "Nearest Cart Found",
-        `${result.cart?.name}\nDistance: ${distanceInMiles} miles`
+        "Route Found",
+        `Cart: ${result.cart.name}\nDirect Distance: ${distanceInMiles} miles\n\nRoute Distance: ${routeData.distance}\nEstimated Time: ${routeData.duration}`
       )
     }
   }
