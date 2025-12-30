@@ -83,9 +83,12 @@ interface RouteData {
   coordinates: { latitude: number; longitude: number }[]
 }
 
+type RideStatus = "idle" | "requesting" | "enroute" | "pickup" | "riding" | "completed"
+
 export default function HomeScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null)
   const [route, setRoute] = useState<RouteData | null>(null)
+  const [rideStatus, setRideStatus] = useState<RideStatus>("idle")
 
   // Initial region - Downtown Cincinnati
   const initialRegion = {
@@ -194,6 +197,9 @@ export default function HomeScreen() {
       return
     }
 
+    // Set status to requesting
+    setRideStatus("requesting")
+
     const distanceInMiles = (result.distance * 0.000621371).toFixed(2)
     console.log(`Nearest cart: ${result.cart.name}`)
     console.log(
@@ -212,13 +218,74 @@ export default function HomeScreen() {
 
     if (routeData) {
       setRoute(routeData)
+      setRideStatus("enroute")
 
       Alert.alert(
-        "Route Found",
-        `Cart: ${result.cart.name}\nDirect Distance: ${distanceInMiles} miles\n\nRoute Distance: ${routeData.distance}\nEstimated Time: ${routeData.duration}`
+        "Ride Requested",
+        `${result.cart.name} is on the way!\n\nDistance: ${routeData.distance}\nEstimated Time: ${routeData.duration}`
       )
+    } else {
+      // Reset to idle if route fetch failed
+      setRideStatus("idle")
     }
   }
+
+  const handleCancelRequest = () => {
+    Alert.alert(
+      "Cancel Ride",
+      "Are you sure you want to cancel this ride request?",
+      [
+        {
+          text: "No",
+          style: "cancel",
+        },
+        {
+          text: "Yes, Cancel",
+          style: "destructive",
+          onPress: () => {
+            setRoute(null)
+            setRideStatus("idle")
+          },
+        },
+      ]
+    )
+  }
+
+  // Button content based on ride status
+  const getButtonContent = () => {
+    switch (rideStatus) {
+      case "idle":
+        return {
+          text: "Request Pickup to Stadium",
+          icon: "sports-baseball" as const,
+          onPress: handleRequestPickup,
+          disabled: false,
+        }
+      case "requesting":
+        return {
+          text: "Finding Route...",
+          icon: "hourglass-empty" as const,
+          onPress: () => {},
+          disabled: true,
+        }
+      case "enroute":
+        return {
+          text: "Cancel Request",
+          icon: "close" as const,
+          onPress: handleCancelRequest,
+          disabled: false,
+        }
+      default:
+        return {
+          text: "Request Pickup to Stadium",
+          icon: "sports-baseball" as const,
+          onPress: handleRequestPickup,
+          disabled: false,
+        }
+    }
+  }
+
+  const buttonContent = getButtonContent()
 
   return (
     <ThemedView style={styles.container}>
@@ -247,12 +314,16 @@ export default function HomeScreen() {
       </ThemedMapView>
 
       <TouchableOpacity
-        style={styles.requestButton}
-        onPress={handleRequestPickup}
+        style={[
+          styles.requestButton,
+          buttonContent.disabled && styles.requestButtonDisabled,
+        ]}
+        onPress={buttonContent.onPress}
         activeOpacity={0.8}
+        disabled={buttonContent.disabled}
       >
-        <MaterialIcons name="sports-baseball" size={24} color="#ffffff" />
-        <Text style={styles.requestButtonText}>Request Pickup to Stadium</Text>
+        <MaterialIcons name={buttonContent.icon} size={24} color="#ffffff" />
+        <Text style={styles.requestButtonText}>{buttonContent.text}</Text>
       </TouchableOpacity>
     </ThemedView>
   )
@@ -287,5 +358,9 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 14,
     fontWeight: "600",
+  },
+  requestButtonDisabled: {
+    backgroundColor: "#9ca3af",
+    opacity: 0.7,
   },
 })
