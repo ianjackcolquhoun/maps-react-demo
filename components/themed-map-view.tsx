@@ -12,11 +12,13 @@ export type ThemedMapViewProps = ViewProps & {
     latitudeDelta: number
     longitudeDelta: number
   }
+  children?: React.ReactNode
 }
 
 export function ThemedMapView({
   style,
   initialRegion,
+  children,
   ...otherProps
 }: ThemedMapViewProps) {
   const colorScheme = useColorScheme()
@@ -131,15 +133,17 @@ export function ThemedMapView({
         initialRegion={region}
         provider={PROVIDER_GOOGLE}
         customMapStyle={darkMapStyle}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
         onMapReady={() => setIsLoading(false)}
         onError={(e) => {
           setMapError(e.nativeEvent?.message || "Unknown map error")
           setIsLoading(false)
         }}
         {...otherProps}
-      />
+      >
+        {children}
+      </MapView>
     </>
   )
 }
