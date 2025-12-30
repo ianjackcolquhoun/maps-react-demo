@@ -1,6 +1,9 @@
 import { StyleSheet } from 'react-native';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedMapView } from '@/components/themed-map-view';
+import { CartMarker } from '@/components/cart-marker';
+import { StadiumMarker } from '@/components/stadium-marker';
+import { CARTS, STADIUM } from '@/constants/carts';
 
 export default function HomeScreen() {
   // Initial region - Downtown Cincinnati
@@ -13,7 +16,16 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedMapView style={styles.map} initialRegion={initialRegion} />
+      <ThemedMapView style={styles.map} initialRegion={initialRegion}>
+        {CARTS.map((cart) => (
+          <CartMarker key={cart.id} cart={cart} />
+        ))}
+        <StadiumMarker
+          name={STADIUM.name}
+          latitude={STADIUM.latitude}
+          longitude={STADIUM.longitude}
+        />
+      </ThemedMapView>
     </ThemedView>
   );
 }
