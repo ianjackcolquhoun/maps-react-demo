@@ -7,7 +7,50 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons"
 import * as Location from "expo-location"
 import { useEffect, useState } from "react"
 import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native"
-import { Polygon } from "react-native-maps"
+import { Polygon, Polyline } from "react-native-maps"
+
+// Decode Google's encoded polyline format
+function decodePolyline(encoded: string): { latitude: number; longitude: number }[] {
+  const poly = []
+  let index = 0
+  const len = encoded.length
+  let lat = 0
+  let lng = 0
+
+  while (index < len) {
+    let b
+    let shift = 0
+    let result = 0
+
+    do {
+      b = encoded.charCodeAt(index++) - 63
+      result |= (b & 0x1f) << shift
+      shift += 5
+    } while (b >= 0x20)
+
+    const deltaLat = result & 1 ? ~(result >> 1) : result >> 1
+    lat += deltaLat
+
+    shift = 0
+    result = 0
+
+    do {
+      b = encoded.charCodeAt(index++) - 63
+      result |= (b & 0x1f) << shift
+      shift += 5
+    } while (b >= 0x20)
+
+    const deltaLng = result & 1 ? ~(result >> 1) : result >> 1
+    lng += deltaLng
+
+    poly.push({
+      latitude: lat / 1e5,
+      longitude: lng / 1e5,
+    })
+  }
+
+  return poly
+}
 
 // Haversine formula to calculate distance between two coordinates in meters
 function calculateDistance(
@@ -37,6 +80,7 @@ interface RouteData {
   distance: string
   duration: string
   polyline: string
+  coordinates: { latitude: number; longitude: number }[]
 }
 
 export default function HomeScreen() {
@@ -128,11 +172,13 @@ export default function HomeScreen() {
 
       const route = data.routes[0]
       const leg = route.legs[0]
+      const encodedPolyline = route.overview_polyline.points
 
       return {
         distance: leg.distance.text,
         duration: leg.duration.text,
-        polyline: route.overview_polyline.points,
+        polyline: encodedPolyline,
+        coordinates: decodePolyline(encodedPolyline),
       }
     } catch (error) {
       Alert.alert("Network Error", "Failed to fetch route from Google Maps")
@@ -191,6 +237,13 @@ export default function HomeScreen() {
           latitude={STADIUM.latitude}
           longitude={STADIUM.longitude}
         />
+        {route && (
+          <Polyline
+            coordinates={route.coordinates}
+            strokeColor="#7c3aed"
+            strokeWidth={4}
+          />
+        )}
       </ThemedMapView>
 
       <TouchableOpacity
