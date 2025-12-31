@@ -5,7 +5,7 @@ import { ThemedView } from "@/components/themed-view"
 import { CARTS, SERVICE_AREA_COORDINATES, STADIUM } from "@/constants/carts"
 import MaterialIcons from "@expo/vector-icons/MaterialIcons"
 import * as Location from "expo-location"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { Polygon, Polyline } from "react-native-maps"
 
@@ -52,6 +52,33 @@ function decodePolyline(encoded: string): { latitude: number; longitude: number 
   return poly
 }
 
+// Interpolate position along route coordinates based on progress (0 to 1)
+function interpolateRoute(
+  coordinates: { latitude: number; longitude: number }[],
+  progress: number
+): { latitude: number; longitude: number } {
+  if (coordinates.length === 0) {
+    return { latitude: 0, longitude: 0 }
+  }
+
+  if (progress <= 0) return coordinates[0]
+  if (progress >= 1) return coordinates[coordinates.length - 1]
+
+  const totalSegments = coordinates.length - 1
+  const targetIndex = progress * totalSegments
+  const lowerIndex = Math.floor(targetIndex)
+  const upperIndex = Math.min(lowerIndex + 1, coordinates.length - 1)
+  const segmentProgress = targetIndex - lowerIndex
+
+  const lower = coordinates[lowerIndex]
+  const upper = coordinates[upperIndex]
+
+  return {
+    latitude: lower.latitude + (upper.latitude - lower.latitude) * segmentProgress,
+    longitude: lower.longitude + (upper.longitude - lower.longitude) * segmentProgress,
+  }
+}
+
 // Haversine formula to calculate distance between two coordinates in meters
 function calculateDistance(
   lat1: number,
@@ -76,11 +103,16 @@ function calculateDistance(
   return R * c // Distance in meters
 }
 
-interface RouteData {
+interface RouteLeg {
   distance: string
   duration: string
   polyline: string
   coordinates: { latitude: number; longitude: number }[]
+}
+
+interface RouteData {
+  legToUser: RouteLeg
+  legToStadium: RouteLeg
 }
 
 type RideStatus = "idle" | "requesting" | "enroute" | "pickup" | "riding" | "completed"
@@ -90,6 +122,12 @@ export default function HomeScreen() {
   const [route, setRoute] = useState<RouteData | null>(null)
   const [rideStatus, setRideStatus] = useState<RideStatus>("idle")
   const [selectedCart, setSelectedCart] = useState<Cart | null>(null)
+  const [animatedCartPosition, setAnimatedCartPosition] = useState<{
+    latitude: number
+    longitude: number
+  } | null>(null)
+  const animationInterval = useRef<NodeJS.Timeout | null>(null)
+  const pauseTimeout = useRef<NodeJS.Timeout | null>(null)
 
   // Initial region - Downtown Cincinnati
   const initialRegion = {
@@ -114,6 +152,130 @@ export default function HomeScreen() {
       setLocation(currentLocation)
     })()
   }, [])
+
+  // Animate cart movement
+  useEffect(() => {
+    // Animation to user
+    if (rideStatus === "enroute" && route && selectedCart && location) {
+      const animationDuration = 15 // 15 seconds to reach user
+      const updateInterval = 100
+      const totalSteps = (animationDuration * 1000) / updateInterval
+      let currentStep = 0
+
+      console.log("Starting animation to user")
+
+      setAnimatedCartPosition({
+        latitude: selectedCart.latitude,
+        longitude: selectedCart.longitude,
+      })
+
+      animationInterval.current = setInterval(() => {
+        currentStep++
+        const progress = currentStep / totalSteps
+
+        if (currentStep % 50 === 0) {
+          console.log(`Animation to user: ${(progress * 100).toFixed(1)}%`)
+        }
+
+        if (progress >= 1) {
+          if (animationInterval.current) {
+            clearInterval(animationInterval.current)
+          }
+
+          console.log("Cart reached user, pausing for 2 seconds")
+
+          // Set position to user location
+          setAnimatedCartPosition({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          })
+
+          // Pause for 2 seconds, then transition to pickup
+          pauseTimeout.current = setTimeout(() => {
+            console.log("Starting route to stadium")
+            setRideStatus("pickup")
+          }, 2000)
+        } else {
+          const newPosition = interpolateRoute(route.legToUser.coordinates, progress)
+          setAnimatedCartPosition(newPosition)
+        }
+      }, updateInterval)
+    }
+    // Animation to stadium
+    else if (rideStatus === "pickup" && route && location) {
+      const animationDuration = 20 // 20 seconds to reach stadium
+      const updateInterval = 100
+      const totalSteps = (animationDuration * 1000) / updateInterval
+      let currentStep = 0
+
+      console.log("Starting animation to stadium")
+
+      setAnimatedCartPosition({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      })
+
+      animationInterval.current = setInterval(() => {
+        currentStep++
+        const progress = currentStep / totalSteps
+
+        if (currentStep % 50 === 0) {
+          console.log(`Animation to stadium: ${(progress * 100).toFixed(1)}%`)
+        }
+
+        if (progress >= 1) {
+          if (animationInterval.current) {
+            clearInterval(animationInterval.current)
+          }
+
+          console.log("Arrived at stadium!")
+
+          setAnimatedCartPosition(null)
+          setRideStatus("completed")
+
+          // Show completion message
+          Alert.alert(
+            "Ride Complete!",
+            "You've arrived at Great American Ball Park. Enjoy the game!",
+            [
+              {
+                text: "OK",
+                onPress: () => {
+                  setRoute(null)
+                  setRideStatus("idle")
+                  setSelectedCart(null)
+                },
+              },
+            ]
+          )
+        } else {
+          const newPosition = interpolateRoute(route.legToStadium.coordinates, progress)
+          setAnimatedCartPosition(newPosition)
+        }
+      }, updateInterval)
+    } else {
+      // Clear animations if status changes
+      if (animationInterval.current) {
+        clearInterval(animationInterval.current)
+      }
+      if (pauseTimeout.current) {
+        clearTimeout(pauseTimeout.current)
+      }
+      if (rideStatus === "idle") {
+        setAnimatedCartPosition(null)
+      }
+    }
+
+    // Cleanup
+    return () => {
+      if (animationInterval.current) {
+        clearInterval(animationInterval.current)
+      }
+      if (pauseTimeout.current) {
+        clearTimeout(pauseTimeout.current)
+      }
+    }
+  }, [rideStatus, route, selectedCart, location])
 
   const findNearestCart = () => {
     if (!location) {
@@ -175,14 +337,35 @@ export default function HomeScreen() {
       }
 
       const route = data.routes[0]
-      const leg = route.legs[0]
-      const encodedPolyline = route.overview_polyline.points
+
+      // Route has 2 legs: cart → user, user → stadium
+      const legToUser = route.legs[0]
+      const legToStadium = route.legs[1]
+
+      // Decode and combine coordinates from all steps in each leg
+      const legToUserCoords = legToUser.steps.flatMap((step: any) =>
+        decodePolyline(step.polyline.points)
+      )
+      const legToStadiumCoords = legToStadium.steps.flatMap((step: any) =>
+        decodePolyline(step.polyline.points)
+      )
+
+      console.log("Leg to user:", legToUserCoords.length, "coordinates")
+      console.log("Leg to stadium:", legToStadiumCoords.length, "coordinates")
 
       return {
-        distance: leg.distance.text,
-        duration: leg.duration.text,
-        polyline: encodedPolyline,
-        coordinates: decodePolyline(encodedPolyline),
+        legToUser: {
+          distance: legToUser.distance.text,
+          duration: legToUser.duration.text,
+          polyline: "", // Not needed anymore
+          coordinates: legToUserCoords,
+        },
+        legToStadium: {
+          distance: legToStadium.distance.text,
+          duration: legToStadium.duration.text,
+          polyline: "", // Not needed anymore
+          coordinates: legToStadiumCoords,
+        },
       }
     } catch (error) {
       Alert.alert("Network Error", "Failed to fetch route from Google Maps")
@@ -258,6 +441,13 @@ export default function HomeScreen() {
           onPress: handleCancelRequest,
           disabled: false,
         }
+      case "pickup":
+        return {
+          text: "Ride in Progress",
+          icon: "sports-baseball" as const,
+          onPress: () => {},
+          disabled: true,
+        }
       default:
         return {
           text: "Request Pickup to Stadium",
@@ -285,8 +475,16 @@ export default function HomeScreen() {
         return {
           status: "Cart is on the way",
           cart: selectedCart.name,
-          eta: route.duration,
-          distance: route.distance,
+          eta: route.legToUser.duration,
+          distance: route.legToUser.distance,
+          showETA: true,
+        }
+      case "pickup":
+        return {
+          status: "En route to stadium",
+          cart: `${selectedCart.name} → ${STADIUM.name}`,
+          eta: route.legToStadium.duration,
+          distance: route.legToStadium.distance,
           showETA: true,
         }
       default:
@@ -306,19 +504,41 @@ export default function HomeScreen() {
           strokeWidth={2}
         />
         {CARTS.map((cart) => (
-          <CartMarker key={cart.id} cart={cart} />
+          <CartMarker
+            key={cart.id}
+            cart={cart}
+            coordinate={
+              cart.id === selectedCart?.id && animatedCartPosition
+                ? animatedCartPosition
+                : undefined
+            }
+          />
         ))}
         <StadiumMarker
           name={STADIUM.name}
           latitude={STADIUM.latitude}
           longitude={STADIUM.longitude}
         />
-        {route && (
+        {route && rideStatus === "enroute" && (
           <Polyline
-            coordinates={route.coordinates}
+            coordinates={route.legToUser.coordinates}
             strokeColor="#7c3aed"
             strokeWidth={4}
           />
+        )}
+        {route && rideStatus === "pickup" && (
+          <>
+            <Polyline
+              coordinates={route.legToUser.coordinates}
+              strokeColor="#9ca3af"
+              strokeWidth={3}
+            />
+            <Polyline
+              coordinates={route.legToStadium.coordinates}
+              strokeColor="#7c3aed"
+              strokeWidth={4}
+            />
+          </>
         )}
       </ThemedMapView>
 

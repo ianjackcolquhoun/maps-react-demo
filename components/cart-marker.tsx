@@ -5,17 +5,22 @@ import type { Cart } from '@/constants/carts';
 
 export type CartMarkerProps = {
   cart: Cart;
+  coordinate?: {
+    latitude: number;
+    longitude: number;
+  };
 };
 
-export function CartMarker({ cart }: CartMarkerProps) {
+export function CartMarker({ cart, coordinate }: CartMarkerProps) {
   return (
     <Marker
-      coordinate={{
+      coordinate={coordinate || {
         latitude: cart.latitude,
         longitude: cart.longitude,
       }}
       title={cart.name}
       tracksViewChanges={false}
+      anchor={{ x: 0.5, y: 0.5 }}
     >
       <View style={styles.markerContainer}>
         <MaterialIcons name="directions-car" size={24} color="#7c3aed" />
