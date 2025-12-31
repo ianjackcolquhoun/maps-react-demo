@@ -126,6 +126,7 @@ export default function HomeScreen() {
     latitude: number
     longitude: number
   } | null>(null)
+  const [routeProgress, setRouteProgress] = useState<number>(0)
   const animationInterval = useRef<NodeJS.Timeout | null>(null)
   const pauseTimeout = useRef<NodeJS.Timeout | null>(null)
 
@@ -189,15 +190,18 @@ export default function HomeScreen() {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           })
+          setRouteProgress(1)
 
           // Pause for 2 seconds, then transition to pickup
           pauseTimeout.current = setTimeout(() => {
             console.log("Starting route to stadium")
             setRideStatus("pickup")
+            setRouteProgress(0) // Reset progress for next leg
           }, 2000)
         } else {
           const newPosition = interpolateRoute(route.legToUser.coordinates, progress)
           setAnimatedCartPosition(newPosition)
+          setRouteProgress(progress)
         }
       }, updateInterval)
     }
@@ -231,6 +235,7 @@ export default function HomeScreen() {
           console.log("Arrived at stadium!")
 
           setAnimatedCartPosition(null)
+          setRouteProgress(1)
           setRideStatus("completed")
 
           // Show completion message
@@ -244,6 +249,7 @@ export default function HomeScreen() {
                   setRoute(null)
                   setRideStatus("idle")
                   setSelectedCart(null)
+                  setRouteProgress(0)
                 },
               },
             ]
@@ -251,6 +257,7 @@ export default function HomeScreen() {
         } else {
           const newPosition = interpolateRoute(route.legToStadium.coordinates, progress)
           setAnimatedCartPosition(newPosition)
+          setRouteProgress(progress)
         }
       }, updateInterval)
     } else {
@@ -263,6 +270,7 @@ export default function HomeScreen() {
       }
       if (rideStatus === "idle") {
         setAnimatedCartPosition(null)
+        setRouteProgress(0)
       }
     }
 
@@ -519,27 +527,28 @@ export default function HomeScreen() {
           latitude={STADIUM.latitude}
           longitude={STADIUM.longitude}
         />
-        {route && rideStatus === "enroute" && (
-          <Polyline
-            coordinates={route.legToUser.coordinates}
-            strokeColor="#7c3aed"
-            strokeWidth={4}
-          />
-        )}
-        {route && rideStatus === "pickup" && (
-          <>
+        {route && rideStatus === "enroute" && (() => {
+          const startIndex = Math.floor(routeProgress * (route.legToUser.coordinates.length - 1))
+          const remainingCoordinates = route.legToUser.coordinates.slice(startIndex)
+          return (
             <Polyline
-              coordinates={route.legToUser.coordinates}
-              strokeColor="#9ca3af"
-              strokeWidth={3}
-            />
-            <Polyline
-              coordinates={route.legToStadium.coordinates}
+              coordinates={remainingCoordinates}
               strokeColor="#7c3aed"
               strokeWidth={4}
             />
-          </>
-        )}
+          )
+        })()}
+        {route && rideStatus === "pickup" && (() => {
+          const startIndex = Math.floor(routeProgress * (route.legToStadium.coordinates.length - 1))
+          const remainingCoordinates = route.legToStadium.coordinates.slice(startIndex)
+          return (
+            <Polyline
+              coordinates={remainingCoordinates}
+              strokeColor="#7c3aed"
+              strokeWidth={4}
+            />
+          )
+        })()}
       </ThemedMapView>
 
       {rideInfo && (
